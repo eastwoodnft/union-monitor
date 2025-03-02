@@ -5,18 +5,19 @@ import os
 import asyncio
 from collections import deque
 from telegram import Bot
-from telegram.ext import Application, CommandHandler  # Correct imports for v20.x
+from telegram.ext import Application, CommandHandler
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
+# Load environment variables from .env file
 load_dotenv()
 
 # Configuration
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-VALIDATOR_CONSENSUS_ADDRESS = os.getenv("VALIDATOR_CONSENSUS_ADDRESS")  # Typo? Should be ADDRESS?
+VALIDATOR_CONSENSUS_ADDRESS = os.getenv("VALIDATOR_CONSENSUS_ADDRESS")
 VALIDATOR_OPERATOR_ADDRESS = os.getenv("VALIDATOR_OPERATOR_ADDRESS")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 UNION_RPC = "http://161.35.98.109:26657"
@@ -46,7 +47,6 @@ class MonitorState:
         self.avg_block_time = 0
         self.active = False
         self.catching_up = False
-        self.peer_count = None
         self.voting_power = None
         self.total_voting_power = None
         self.rank = None
@@ -57,7 +57,6 @@ class MonitorState:
 state = MonitorState()
 
 async def get_validator_status():
-    # [Same as your original code]
     session = requests.Session()
     retry_strategy = Retry(total=3, backoff_factor=1)
     session.mount("http://", HTTPAdapter(max_retries=retry_strategy))
@@ -68,18 +67,8 @@ async def get_validator_status():
         logging.info(f"RPC /status response: {status}")
 
         catching_up = status["sync_info"]["catching_up"]
-        peer_count = None
-        if "node_info" in status:
-            node_info = status["node_info"]
-            for key in ["peer_count", "peers", "connected_peers"]:
-                if key in node_info:
-                    peer_count = int(node_info[key])
-                    break
-                elif "other" in node_info and key in node_info["other"]:
-                    peer_count = int(node_info["other"][key])
-                    break
         latest_height = int(status["sync_info"]["latest_block_height"])
-        logging.info(f"Parsed RPC status: height={latest_height}, catching_up={catching_up}, peers={peer_count}")
+        logging.info(f"Parsed RPC status: height={latest_height}, catching_up={catching_up}")
 
         response = session.get(f"{UNION_RPC}/validators?height={latest_height}&page=1&per_page=100", timeout=10)
         response.raise_for_status()
@@ -91,7 +80,7 @@ async def get_validator_status():
 
         if not my_validator:
             logging.warning(f"Validator {VALIDATOR_CONSENSUS_ADDRESS} not found in active set at height {latest_height}")
-            return True, catching_up, peer_count, None, total_voting_power, None, False, None, None
+            return True, catching_up, None, total_voting_power, None, False, None, None
 
         voting_power = int(my_validator["voting_power"])
         rank = sorted(validators, key=lambda x: int(x["voting_power"]), reverse=True).index(my_validator) + 1
@@ -107,13 +96,12 @@ async def get_validator_status():
             logging.warning(f"REST API returned {response.status_code}: {response.text}")
             delegator_count = None
 
-        return True, catching_up, peer_count, voting_power, total_voting_power, rank, jailed, delegator_count, None
+        return True, catching_up, voting_power, total_voting_power, rank, jailed, delegator_count, None
     except Exception as e:
         logging.error(f"Error fetching validator status: {e}")
-        return False, None, None, None, None, None, None, None, None
+        return False, None, None, None, None, None, None, None
 
 async def get_latest_height():
-    # [Same as your original code]
     session = requests.Session()
     retry_strategy = Retry(total=3, backoff_factor=1)
     session.mount("http://", HTTPAdapter(max_retries=retry_strategy))
@@ -128,7 +116,6 @@ async def get_latest_height():
         return 0
 
 async def get_missed_blocks(last_height, missed_blocks_timestamps):
-    # [Same as your original code]
     missed = 0
     current_height = last_height
     block_times = []
@@ -183,22 +170,18 @@ async def send_telegram_alert(message):
     except Exception as e:
         logging.error(f"Error sending Telegram message: {e}")
 
-# Command handlers (updated for v20.x)
-async def status_command(update, context):  # No CallbackContext in v20.x
+# Command handlers
+async def status_command(update, context):
     missed_percentage = (state.total_missed / SLASHING_WINDOW * 100) if state.total_missed > 0 else 0
     msg = (
         f"*Validator Status*\n"
-        f"Active: {'✅' if state.active else '❌'} {'Yes' if state.active else 'No'}\n"
-        f"Syncing: {'✅' if not state.catching_up else '❌'} {'No' if not state.catching_up else 'Yes'}\n"
-        f"Peers: {'✅' if state.peer_count and state.peer_count >= 5 else '❌'} {state.peer_count if state.peer_count is not None else 'N/A'}\n"
-        f"Voting Power: {'✅' if state.voting_power and state.voting_power >= 1000 else '❌'} "
-        f"{state.voting_power // 10**6 if state.voting_power is not None else 'N/A'} UNION "
+        f"Active: {state.active}\n"
+        f"Syncing: {not state.catching_up}\n"
+        f"Voting Power: {state.voting_power // 10**6 if state.voting_power is not None else 'N/A'} UNION "
         f"(Rank: {state.rank if state.rank is not None else 'N/A'})\n"
-        f"Jailed: {'✅' if not state.jailed else '❌'} {'No' if not state.jailed else 'Yes'}\n"
-        f"Delegators: {'✅' if state.delegator_count and state.delegator_count >= 10 else '❌'} "
-        f"{state.delegator_count if state.delegator_count is not None else 'N/A'} UNION\n"
-        f"Missed Blocks (Slashing Window): {'✅' if missed_percentage < SLASHING_THRESHOLD * 100 else '❌'} "
-        f"{state.total_missed}/{SLASHING_WINDOW} ({missed_percentage:.1f}%)"
+        f"Jailed: {not state.jailed}\n"
+        f"Delegators: {state.delegator_count if state.delegator_count is not None else 'N/A'} UNION\n"
+        f"Missed Blocks (Slashing Window): {state.total_missed}/{SLASHING_WINDOW} ({missed_percentage:.1f}%)"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -221,12 +204,10 @@ async def network_command(update, context):
 async def validator_command(update, context):
     msg = (
         f"*Validator Details*\n"
-        f"Voting Power: {'✅' if state.voting_power and state.voting_power >= 1000 else '❌'} "
-        f"{state.voting_power // 10**6 if state.voting_power is not None else 'N/A'} UNION "
+        f"Voting Power: {state.voting_power // 10**6 if state.voting_power is not None else 'N/A'} UNION "
         f"(Rank: {state.rank if state.rank is not None else 'N/A'})\n"
-        f"Jailed: {'✅' if not state.jailed else '❌'} {'No' if not state.jailed else 'Yes'}\n"
-        f"Delegators: {'✅' if state.delegator_count and state.delegator_count >= 10 else '❌'} "
-        f"{state.delegator_count if state.delegator_count is not None else 'N/A'} UNION"
+        f"Jailed: {not state.jailed}\n"
+        f"Delegators: {state.delegator_count if state.delegator_count is not None else 'N/A'} UNION"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -260,12 +241,11 @@ async def monitor():
     await application.updater.start_polling()
 
     while True:
-        active, catching_up, peer_count, voting_power, total_voting_power, rank, jailed, delegator_count, _ = await get_validator_status()
+        active, catching_up, voting_power, total_voting_power, rank, jailed, delegator_count, _ = await get_validator_status()
         missed, current_height, total_missed, avg_block_time = await get_missed_blocks(state.last_height, missed_blocks_timestamps)
 
         state.active = active
         state.catching_up = catching_up
-        state.peer_count = peer_count
         state.voting_power = voting_power
         state.total_voting_power = total_voting_power
         state.rank = rank
@@ -276,7 +256,7 @@ async def monitor():
         state.uptime = 100 * (1 - (total_missed / SLASHING_WINDOW)) if total_missed > 0 else 100
 
         logging.info(
-            f"State updated: active={state.active}, peers={state.peer_count}, voting_power={state.voting_power}, "
+            f"State updated: active={state.active}, voting_power={state.voting_power}, "
             f"total_missed={state.total_missed}, avg_block_time={state.avg_block_time}, uptime={state.uptime}"
         )
 
@@ -289,21 +269,19 @@ async def monitor():
             failures = 0
 
         if not active and state.voting_power is None:
-            await send_telegram_alert("❌ *Validator is not in the active set!*")
+            await send_telegram_alert("*Validator is not in the active set!*")
         if catching_up:
-            await send_telegram_alert("❌ *Node is not synced!*")
-        if peer_count is not None and peer_count < 5:
-            await send_telegram_alert(f"❌ *Low peer count*: {peer_count} peers connected!")
+            await send_telegram_alert("*Node is not synced!*")
         if jailed:
-            await send_telegram_alert("❌ *Validator is jailed!* Immediate action required!")
+            await send_telegram_alert("*Validator is jailed!* Immediate action required!")
         if voting_power is not None and voting_power < 1000:
-            await send_telegram_alert(f"❌ *Low voting power*: {voting_power // 10**6} UNION (Rank: {rank})")
+            await send_telegram_alert(f"*Low voting power*: {voting_power // 10**6} UNION (Rank: {rank})")
         if avg_block_time > 10:
-            await send_telegram_alert(f"❌ *Slow block time*: {avg_block_time:.2f}s")
+            await send_telegram_alert(f"*Slow block time*: {avg_block_time:.2f}s")
         if delegator_count is not None and delegator_count < 10:
-            await send_telegram_alert(f"❌ *Low delegator count*: {delegator_count} UNION")
+            await send_telegram_alert(f"*Low delegator count*: {delegator_count} UNION")
         if state.uptime is not None and state.uptime < (100 - SLASHING_THRESHOLD * 100):
-            await send_telegram_alert(f"❌ *High miss rate*: {state.total_missed}/{SLASHING_WINDOW} blocks missed!")
+            await send_telegram_alert(f"*High miss rate*: {state.total_missed}/{SLASHING_WINDOW} blocks missed!")
 
         if missed > 0:
             state.missed_since_last_alert += missed
