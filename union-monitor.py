@@ -4,9 +4,8 @@ import logging
 import os
 import asyncio
 from collections import deque
-from telegram import Bot, Update
-from telegram import Application
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram import Bot
+from telegram.ext import Application, CommandHandler  # Correct imports for v20.x
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from datetime import datetime, timedelta
@@ -14,7 +13,7 @@ from datetime import datetime, timedelta
 # Configuration
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-VALIDATOR_CONSENSUS_ADDRESS = os.getenv("VALIDATOR_CONSENSUS_ADDRES")
+VALIDATOR_CONSENSUS_ADDRESS = os.getenv("VALIDATOR_CONSENSUS_ADDRES")  # Typo? Should be ADDRESS?
 VALIDATOR_OPERATOR_ADDRESS = os.getenv("VALIDATOR_OPERATOR_ADDRESS")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 UNION_RPC = "http://161.35.98.109:26657"
@@ -22,6 +21,7 @@ UNION_REST_API = "http://161.35.98.109:1317"
 SLASHING_WINDOW = 100
 SLASHING_THRESHOLD = 0.20  # 20% threshold for slashing alert
 
+# Initialize bot and application
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
@@ -38,8 +38,8 @@ class MonitorState:
     def __init__(self):
         self.last_height = 0
         self.missed_since_last_alert = 0
-        self.total_missed = 0  # Total missed blocks in current window
-        self.total_blocks = 0  # Total blocks in current window
+        self.total_missed = 0
+        self.total_blocks = 0
         self.avg_block_time = 0
         self.active = False
         self.catching_up = False
@@ -54,6 +54,7 @@ class MonitorState:
 state = MonitorState()
 
 async def get_validator_status():
+    # [Same as your original code]
     session = requests.Session()
     retry_strategy = Retry(total=3, backoff_factor=1)
     session.mount("http://", HTTPAdapter(max_retries=retry_strategy))
@@ -97,7 +98,7 @@ async def get_validator_status():
         response = session.get(f"{UNION_REST_API}/cosmos/staking/v1beta1/validators/{VALIDATOR_OPERATOR_ADDRESS}", timeout=10)
         if response.status_code == 200:
             val_data = response.json()["validator"]
-            delegator_count = int(val_data.get("delegator_shares", "0").split('.')[0]) // 10**18  # Assuming 18 decimals
+            delegator_count = int(val_data.get("delegator_shares", "0").split('.')[0]) // 10**18
             logging.info(f"REST API: delegator_count={delegator_count}")
         else:
             logging.warning(f"REST API returned {response.status_code}: {response.text}")
@@ -109,6 +110,7 @@ async def get_validator_status():
         return False, None, None, None, None, None, None, None, None
 
 async def get_latest_height():
+    # [Same as your original code]
     session = requests.Session()
     retry_strategy = Retry(total=3, backoff_factor=1)
     session.mount("http://", HTTPAdapter(max_retries=retry_strategy))
@@ -123,6 +125,7 @@ async def get_latest_height():
         return 0
 
 async def get_missed_blocks(last_height, missed_blocks_timestamps):
+    # [Same as your original code]
     missed = 0
     current_height = last_height
     block_times = []
@@ -139,7 +142,6 @@ async def get_missed_blocks(last_height, missed_blocks_timestamps):
 
         logging.info(f"Checking blocks from {last_height + 1} to {latest_height}")
 
-        # Trim to slashing window
         while missed_blocks_timestamps and len(missed_blocks_timestamps) >= SLASHING_WINDOW:
             missed_blocks_timestamps.popleft()
 
@@ -173,13 +175,13 @@ async def get_missed_blocks(last_height, missed_blocks_timestamps):
 
 async def send_telegram_alert(message):
     try:
-        await asyncio.get_event_loop().run_in_executor(None, bot.send_message, TELEGRAM_CHAT_ID, message, "Markdown")
+        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode="Markdown")
         await asyncio.sleep(1)
     except Exception as e:
         logging.error(f"Error sending Telegram message: {e}")
 
-# Command handlers
-def status_command(update: Update, context: CallbackContext):
+# Command handlers (updated for v20.x)
+async def status_command(update, context):  # No CallbackContext in v20.x
     missed_percentage = (state.total_missed / SLASHING_WINDOW * 100) if state.total_missed > 0 else 0
     msg = (
         f"*Validator Status*\n"
@@ -195,25 +197,25 @@ def status_command(update: Update, context: CallbackContext):
         f"Missed Blocks (Slashing Window): {'✅' if missed_percentage < SLASHING_THRESHOLD * 100 else '❌'} "
         f"{state.total_missed}/{SLASHING_WINDOW} ({missed_percentage:.1f}%)"
     )
-    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg, parse_mode="Markdown")
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
-def missed_command(update: Update, context: CallbackContext):
+async def missed_command(update, context):
     missed_percentage = (state.total_missed / SLASHING_WINDOW * 100) if state.total_missed > 0 else 0
     msg = (
         f"*Missed Blocks*\n"
         f"Since Last Alert: {state.missed_since_last_alert}\n"
         f"Slashing Window ({SLASHING_WINDOW} blocks): {state.total_missed} ({missed_percentage:.1f}%)"
     )
-    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg, parse_mode="Markdown")
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
-def network_command(update: Update, context: CallbackContext):
+async def network_command(update, context):
     msg = (
         f"*Network Stats*\n"
         f"Avg Block Time: {state.avg_block_time:.2f}s"
     )
-    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg, parse_mode="Markdown")
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
-def validator_command(update: Update, context: CallbackContext):
+async def validator_command(update, context):
     msg = (
         f"*Validator Details*\n"
         f"Voting Power: {'✅' if state.voting_power and state.voting_power >= 1000 else '❌'} "
@@ -223,7 +225,7 @@ def validator_command(update: Update, context: CallbackContext):
         f"Delegators: {'✅' if state.delegator_count and state.delegator_count >= 10 else '❌'} "
         f"{state.delegator_count if state.delegator_count is not None else 'N/A'} UNION"
     )
-    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg, parse_mode="Markdown")
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def monitor():
     last_height = await get_latest_height()
@@ -241,21 +243,22 @@ async def monitor():
         {"command": "network", "description": "View network stats"},
         {"command": "validator", "description": "Validator details"}
     ]
-    await bot.set_my_commands([(cmd["command"], cmd["description"]) for cmd in commands])
+    await application.bot.set_my_commands([(cmd["command"], cmd["description"]) for cmd in commands])
 
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("status", status_command))
-    dp.add_handler(CommandHandler("missed", missed_command))
-    dp.add_handler(CommandHandler("network", network_command))
-    dp.add_handler(CommandHandler("validator", validator_command))
+    # Add command handlers to the application
+    application.add_handler(CommandHandler("status", status_command))
+    application.add_handler(CommandHandler("missed", missed_command))
+    application.add_handler(CommandHandler("network", network_command))
+    application.add_handler(CommandHandler("validator", validator_command))
 
-    asyncio.get_event_loop().run_in_executor(None, updater.start_polling)
+    # Start polling in the background
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
 
     while True:
         active, catching_up, peer_count, voting_power, total_voting_power, rank, jailed, delegator_count, _ = await get_validator_status()
-        missed, current_height, total_missed, avg_block_time = await get_missed_blocks(
-            state.last_height, missed_blocks_timestamps
-        )
+        missed, current_height, total_missed, avg_block_time = await get_missed_blocks(state.last_height, missed_blocks_timestamps)
 
         state.active = active
         state.catching_up = catching_up
