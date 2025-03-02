@@ -2,24 +2,70 @@ import aiohttp
 from config.settings import *
 
 async def get_latest_height():
-    url = f"{UNION_RPC}/abci_info?"
-    timeout = aiohttp.ClientTimeout(total=10)  # 10 seconds timeout
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        try:
-            async with session.get(url) as response:
-                response.raise_for_status()  # Raise error for bad HTTP responses
-                data = await response.json()
-                return data.get("block_height", 0)
-        except aiohttp.ClientError as e:
-            print(f"⚠️ RPC Connection error: {e}")
-            return 0
+    session = requests.Session()
+    retry_strategy = Retry(total=3, backoff_factor=1)
+    session.mount("http://", HTTPAdapter(max_retries=retry_strategy))
+    try:
+        response = session.get(f"{UNION_RPC}/block", timeout=10)
+        response.raise_for_status()
+        height = int(response.json()["result"]["block"]["header"]["height"])
+        logging.info(f"Latest height: {height}")
+        return height
+    except Exception as e:
+        logging.error(f"Error fetching latest height: {e}")
+        return 0
 
 async def get_missed_blocks(last_height, missed_blocks_timestamps):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(f"{UNION_RPC}/missed_blocks?height={last_height}") as response:
-            data = await response.json()
-            missed = data["missed"]
-            current_height = data["height"]
-            total_missed = data["total_missed"]
-            avg_block_time = data["avg_block_time"]
-            return missed, current_height, total_missed, avg_block_time
+    missed = 0
+    current_height = last_height
+    block_times = []
+    session = requests.Session()
+    retry_strategy = Retry(total=3, backoff_factor=1)
+    session.mount("http://", HTTPAdapter(max_retries=retry_strategy))
+    try:
+        response = session.get(f"{UNION_RPC}/block", timeout=10)
+        response.raise_for_status()
+        block_data = response.json()["result"]["block"]
+        latest_height = int(block_data["header"]["height"])
+        latest_block_time = block_data["header"]["time"]
+        latest_time = time.mktime(time.strptime(latest_block_time[:19], "%Y-%m-%dT%H:%M:%S"))
+
+        logging.info(f"Checking blocks from {last_height + 1} to {latest_height}")
+
+        # Reset missed blocks if the window has moved beyond SLASHING_WINDOW
+        if latest_height - last_height > SLASHING_WINDOW:
+            missed_blocks_timestamps.clear()
+            logging.info(f"Reset missed blocks: window moved beyond {SLASHING_WINDOW} blocks")
+        else:
+            # Trim old blocks outside the slashing window
+            while missed_blocks_timestamps and (latest_height - missed_blocks_timestamps[0]["height"]) >= SLASHING_WINDOW:
+                missed_blocks_timestamps.popleft()
+
+        total_blocks = min(latest_height - last_height, SLASHING_WINDOW)
+        for height in range(last_height + 1, latest_height + 1):
+            try:
+                response = session.get(f"{UNION_RPC}/block?height={height}", timeout=10)
+                response.raise_for_status()
+                block_data = response.json()["result"]["block"]
+                block_time = time.mktime(time.strptime(block_data["header"]["time"][:19], "%Y-%m-%dT%H:%M:%S"))
+                block_times.append(block_time)
+
+                signatures = block_data["last_commit"]["signatures"]
+                signed = any(sig["validator_address"] == VALIDATOR_CONSENSUS_ADDRESS for sig in signatures)
+                if not signed:
+                    missed += 1
+                    missed_blocks_timestamps.append({"height": height, "timestamp": block_time})
+                current_height = height
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 500:
+                    logging.warning(f"Skipping height {height} due to 500 Internal Server Error")
+                    current_height = height
+                    continue
+                raise
+        avg_block_time = (block_times[-1] - block_times[0]) / (len(block_times) - 1) if len(block_times) > 1 else 0
+        total_missed = len(missed_blocks_timestamps)
+        logging.info(f"Missed blocks check: missed={missed}, total_missed={total_missed}, avg_block_time={avg_block_time}")
+        return missed, current_height, total_missed, avg_block_time
+    except Exception as e:
+        logging.error(f"Error checking missed blocks: {e}")
+        return -1, current_height, len(missed_blocks_timestamps), 0
