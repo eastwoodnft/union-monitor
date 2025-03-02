@@ -2,7 +2,7 @@ import aiohttp
 from config.settings import *
 
 async def get_latest_height():
-    url = f"{UNION_RPC}/latest_block"
+    url = f"{UNION_RPC}/abci_info?"
     timeout = aiohttp.ClientTimeout(total=10)  # 10 seconds timeout
     async with aiohttp.ClientSession(timeout=timeout) as session:
         try:
