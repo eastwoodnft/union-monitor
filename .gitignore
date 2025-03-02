@@ -1,0 +1,14 @@
+# Virtual environment
+union-monitor-env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs and sensitive files
+bot.log
+bot.err
+.env
+
+# System files
+.DS_Store
