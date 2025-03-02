@@ -4,12 +4,7 @@ from collections import deque
 from validator_api.validator_status import get_validator_status
 from validator_api.block_data import get_latest_height, get_missed_blocks
 from telegram_bot.alerts import send_telegram_alert
-
-try:
-    from config.settings import SLASHING_WINDOW, SLASHING_THRESHOLD
-except ImportError:
-    logging.error("SLASHING_WINDOW and SLASHING_THRESHOLD not found in config. Ensure they are defined in config/settings.py")
-    raise
+from config.settings import *
 
 class MonitorState:
     def __init__(self):
