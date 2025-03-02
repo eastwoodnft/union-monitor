@@ -46,7 +46,6 @@ class MonitorState:
         self.total_blocks = 0
         self.avg_block_time = 0
         self.active = False
-        self.catching_up = False
         self.voting_power = None
         self.total_voting_power = None
         self.rank = None
@@ -66,9 +65,8 @@ async def get_validator_status():
         status = response.json()["result"]
         logging.info(f"RPC /status response: {status}")
 
-        catching_up = status["sync_info"]["catching_up"]
         latest_height = int(status["sync_info"]["latest_block_height"])
-        logging.info(f"Parsed RPC status: height={latest_height}, catching_up={catching_up}")
+        logging.info(f"Parsed RPC status: height={latest_height}")
 
         response = session.get(f"{UNION_RPC}/validators?height={latest_height}&page=1&per_page=100", timeout=10)
         response.raise_for_status()
@@ -80,7 +78,7 @@ async def get_validator_status():
 
         if not my_validator:
             logging.warning(f"Validator {VALIDATOR_CONSENSUS_ADDRESS} not found in active set at height {latest_height}")
-            return True, catching_up, None, total_voting_power, None, False, None, None
+            return True, None, total_voting_power, None, False, None, None
 
         voting_power = int(my_validator["voting_power"])
         rank = sorted(validators, key=lambda x: int(x["voting_power"]), reverse=True).index(my_validator) + 1
@@ -96,10 +94,10 @@ async def get_validator_status():
             logging.warning(f"REST API returned {response.status_code}: {response.text}")
             delegator_count = None
 
-        return True, catching_up, voting_power, total_voting_power, rank, jailed, delegator_count, None
+        return True, voting_power, total_voting_power, rank, jailed, delegator_count, None
     except Exception as e:
         logging.error(f"Error fetching validator status: {e}")
-        return False, None, None, None, None, None, None, None
+        return False, None, None, None, None, None, None
 
 async def get_latest_height():
     session = requests.Session()
@@ -163,7 +161,7 @@ async def get_missed_blocks(last_height, missed_blocks_timestamps):
                     continue
                 raise
         avg_block_time = (block_times[-1] - block_times[0]) / (len(block_times) - 1) if len(block_times) > 1 else 0
-        total_missed = len(missed_blocks_timestamps)  # Total missed within the current window
+        total_missed = len(missed_blocks_timestamps)
         logging.info(f"Missed blocks check: missed={missed}, total_missed={total_missed}, avg_block_time={avg_block_time}")
         return missed, current_height, total_missed, avg_block_time
     except Exception as e:
@@ -183,7 +181,6 @@ async def status_command(update, context):
     msg = (
         f"*Validator Status*\n"
         f"Active: {'Yes' if state.active else 'No'}\n"
-        f"Syncing: {'Yes' if not state.catching_up else 'No'}\n"
         f"Voting Power: {state.voting_power // 10**6 if state.voting_power is not None else 'N/A'} UNION "
         f"(Rank: {state.rank if state.rank is not None else 'N/A'})\n"
         f"Jailed: {'Yes' if state.jailed else 'No'}\n"
@@ -248,11 +245,10 @@ async def monitor():
     await application.updater.start_polling()
 
     while True:
-        active, catching_up, voting_power, total_voting_power, rank, jailed, delegator_count, _ = await get_validator_status()
+        active, voting_power, total_voting_power, rank, jailed, delegator_count, _ = await get_validator_status()
         missed, current_height, total_missed, avg_block_time = await get_missed_blocks(state.last_height, missed_blocks_timestamps)
 
         state.active = active
-        state.catching_up = catching_up
         state.voting_power = voting_power
         state.total_voting_power = total_voting_power
         state.rank = rank
@@ -277,8 +273,6 @@ async def monitor():
 
         if not active and state.voting_power is None:
             await send_telegram_alert("*Validator is not in the active set!*")
-        if catching_up:
-            await send_telegram_alert("*Node is not synced!*")
         if jailed:
             await send_telegram_alert("*Validator is jailed!* Immediate action required!")
         if voting_power is not None and voting_power < 1000:
