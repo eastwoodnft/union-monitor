@@ -2,7 +2,7 @@ import aiohttp
 
 async def get_validator_status():
     async with aiohttp.ClientSession() as session:
-        async with session.get("https://your_rpc_endpoint.com/validator_status") as response:
+        async with session.get(f"{UNION_RPC}/validator_status") as response:
             data = await response.json()
             return (
                 data["active"],
