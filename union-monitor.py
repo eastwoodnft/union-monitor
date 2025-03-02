@@ -132,8 +132,14 @@ async def get_missed_blocks(last_height, missed_blocks_timestamps):
 
         logging.info(f"Checking blocks from {last_height + 1} to {latest_height}")
 
-        while missed_blocks_timestamps and len(missed_blocks_timestamps) >= SLASHING_WINDOW:
-            missed_blocks_timestamps.popleft()
+        # Reset missed blocks if the window has moved beyond SLASHING_WINDOW
+        if latest_height - last_height > SLASHING_WINDOW:
+            missed_blocks_timestamps.clear()
+            logging.info(f"Reset missed blocks: window moved beyond {SLASHING_WINDOW} blocks")
+        else:
+            # Trim old blocks outside the slashing window
+            while missed_blocks_timestamps and (latest_height - missed_blocks_timestamps[0]["height"]) >= SLASHING_WINDOW:
+                missed_blocks_timestamps.popleft()
 
         total_blocks = min(latest_height - last_height, SLASHING_WINDOW)
         for height in range(last_height + 1, latest_height + 1):
@@ -157,8 +163,9 @@ async def get_missed_blocks(last_height, missed_blocks_timestamps):
                     continue
                 raise
         avg_block_time = (block_times[-1] - block_times[0]) / (len(block_times) - 1) if len(block_times) > 1 else 0
-        logging.info(f"Missed blocks check: missed={missed}, total_missed={len(missed_blocks_timestamps)}, avg_block_time={avg_block_time}")
-        return missed, current_height, len(missed_blocks_timestamps), avg_block_time
+        total_missed = len(missed_blocks_timestamps)  # Total missed within the current window
+        logging.info(f"Missed blocks check: missed={missed}, total_missed={total_missed}, avg_block_time={avg_block_time}")
+        return missed, current_height, total_missed, avg_block_time
     except Exception as e:
         logging.error(f"Error checking missed blocks: {e}")
         return -1, current_height, len(missed_blocks_timestamps), 0
@@ -175,11 +182,11 @@ async def status_command(update, context):
     missed_percentage = (state.total_missed / SLASHING_WINDOW * 100) if state.total_missed > 0 else 0
     msg = (
         f"*Validator Status*\n"
-        f"Active: {state.active}\n"
-        f"Syncing: {not state.catching_up}\n"
+        f"Active: {'Yes' if state.active else 'No'}\n"
+        f"Syncing: {'Yes' if not state.catching_up else 'No'}\n"
         f"Voting Power: {state.voting_power // 10**6 if state.voting_power is not None else 'N/A'} UNION "
         f"(Rank: {state.rank if state.rank is not None else 'N/A'})\n"
-        f"Jailed: {not state.jailed}\n"
+        f"Jailed: {'Yes' if state.jailed else 'No'}\n"
         f"Delegators: {state.delegator_count if state.delegator_count is not None else 'N/A'} UNION\n"
         f"Missed Blocks (Slashing Window): {state.total_missed}/{SLASHING_WINDOW} ({missed_percentage:.1f}%)"
     )
@@ -206,7 +213,7 @@ async def validator_command(update, context):
         f"*Validator Details*\n"
         f"Voting Power: {state.voting_power // 10**6 if state.voting_power is not None else 'N/A'} UNION "
         f"(Rank: {state.rank if state.rank is not None else 'N/A'})\n"
-        f"Jailed: {not state.jailed}\n"
+        f"Jailed: {'Yes' if state.jailed else 'No'}\n"
         f"Delegators: {state.delegator_count if state.delegator_count is not None else 'N/A'} UNION"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
