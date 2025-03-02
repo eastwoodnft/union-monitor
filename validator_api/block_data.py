@@ -1,4 +1,5 @@
 import aiohttp
+from config.settings import *
 
 async def get_latest_height():
     url = f"{UNION_RPC}/latest_block"
