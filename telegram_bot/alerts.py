@@ -25,7 +25,7 @@ async def status_command(update, context, state):
         f"Missed Blocks: {state.total_missed}/{SLASHING_WINDOW} ({missed_percentage:.1f}%)\n"
         f"Uptime: {state.uptime:.1f}%\n"
         f"Sync Status: {'Synced' if not state.syncing else 'Catching Up'}\n"
-        f"Connected Peers: {state.peer_count}"
+        f"Node Peers: {state.peer_count} (RPC node connectivity)"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -41,7 +41,7 @@ async def network_command(update, context, state):
     msg = (
         f"*Network Stats*\n"
         f"Avg Block Time: {state.avg_block_time:.2f}s\n"
-        f"Connected Peers: {state.peer_count}"
+        f"Node Peers: {state.peer_count} (RPC node connectivity)"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
