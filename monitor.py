@@ -1,5 +1,5 @@
 import asyncio
-import os  # Add for file operations
+import os
 from collections import deque
 from validator_api.block_data import get_latest_height, get_missed_blocks
 from validator_api.validator_status import get_validator_status
@@ -7,7 +7,7 @@ from telegram_bot.alerts import send_telegram_alert, application, status_command
 from telegram.ext import CommandHandler
 from config.settings import SLASHING_WINDOW, SLASHING_THRESHOLD
 from graphing.plot import plot_missed_blocks
-from graphing.storage import load_history, append_history, HISTORY_FILE  # Add HISTORY_FILE
+from graphing.storage import load_history, append_history, HISTORY_FILE
 
 class MonitorState:
     def __init__(self):
@@ -23,8 +23,7 @@ class MonitorState:
         self.delegator_count = None
         self.uptime = None
         self.slashing_window = SLASHING_WINDOW
-        self.syncing = False
-        self.peer_count = 0
+        self.syncing = False  # Kept for node sync status
 
 state = MonitorState()
 
@@ -37,11 +36,10 @@ async def graph_command(update, context, state, history):
         await update.message.reply_text("No data available to generate graph.")
 
 async def monitor():
-    # Delete history file on startup
     if os.path.exists(HISTORY_FILE):
         os.remove(HISTORY_FILE)
         print(f"Deleted {HISTORY_FILE} on startup")
-    history = load_history()  # Will create a fresh empty history
+    history = load_history()
 
     last_height = await get_latest_height()
     if last_height == 0:
@@ -72,7 +70,7 @@ async def monitor():
 
     try:
         while True:
-            active, voting_power, total_voting_power, rank, jailed, delegator_count, _, syncing, peer_count = await get_validator_status()
+            active, voting_power, total_voting_power, rank, jailed, delegator_count, _, syncing = await get_validator_status()
             missed, current_height, total_missed, avg_block_time = await get_missed_blocks(state.last_height, missed_blocks_timestamps)
 
             state.active = active
@@ -85,7 +83,6 @@ async def monitor():
             state.avg_block_time = avg_block_time
             state.uptime = 100 * (1 - (total_missed / SLASHING_WINDOW)) if total_missed > 0 else 100
             state.syncing = syncing
-            state.peer_count = peer_count
 
             from time import time
             append_history(history, time(), state.total_missed)
@@ -124,7 +121,6 @@ async def monitor():
             state.last_height = current_height
             await asyncio.sleep(60)
     finally:
-        # Delete history file on shutdown
         if os.path.exists(HISTORY_FILE):
             os.remove(HISTORY_FILE)
             print(f"Deleted {HISTORY_FILE} on shutdown")
