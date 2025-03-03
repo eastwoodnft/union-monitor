@@ -1,7 +1,7 @@
 import asyncio
 from telegram import Bot
 from telegram.ext import Application, CommandHandler
-from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SLASHING_WINDOW
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
