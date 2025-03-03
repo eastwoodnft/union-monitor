@@ -5,6 +5,7 @@ from validator_api.validator_status import get_validator_status
 from telegram_bot.alerts import send_telegram_alert, application, status_command, missed_command, network_command, validator_command
 from telegram.ext import CommandHandler
 from config.settings import SLASHING_WINDOW, SLASHING_THRESHOLD
+from graphing.plot import plot_missed_blocks
 
 class MonitorState:
     def __init__(self):
@@ -24,6 +25,21 @@ class MonitorState:
 
 state = MonitorState()
 
+# Historical data for graphing (1 week of 1-minute intervals)
+history = {
+    "missed_blocks": deque(maxlen=30*24*7),  # ~1 week at 1-minute intervals
+    "timestamps": deque(maxlen=30*24*7)
+}
+
+async def graph_command(update, context, state, history):
+    """Telegram command to send a graph of missed blocks."""
+    plot_path = plot_missed_blocks(history)
+    if plot_path:
+        with open(plot_path, "rb") as photo:
+            await update.message.reply_photo(photo=photo, caption="Missed Blocks Over Time")
+    else:
+        await update.message.reply_text("No data available to generate graph.")
+
 async def monitor():
     last_height = await get_latest_height()
     if last_height == 0:
@@ -37,7 +53,8 @@ async def monitor():
         {"command": "status", "description": "Get validator status"},
         {"command": "missed", "description": "Check missed blocks"},
         {"command": "network", "description": "View network stats"},
-        {"command": "validator", "description": "Validator details"}
+        {"command": "validator", "description": "Validator details"},
+        {"command": "graph", "description": "Graph missed blocks over time"}
     ]
     await application.bot.set_my_commands([(cmd["command"], cmd["description"]) for cmd in commands])
 
@@ -45,6 +62,7 @@ async def monitor():
     application.add_handler(CommandHandler("missed", lambda u, c: missed_command(u, c, state)))
     application.add_handler(CommandHandler("network", lambda u, c: network_command(u, c, state)))
     application.add_handler(CommandHandler("validator", lambda u, c: validator_command(u, c, state)))
+    application.add_handler(CommandHandler("graph", lambda u, c: graph_command(u, c, state, history)))
 
     await application.initialize()
     await application.start()
@@ -63,6 +81,11 @@ async def monitor():
         state.total_missed = total_missed
         state.avg_block_time = avg_block_time
         state.uptime = 100 * (1 - (total_missed / SLASHING_WINDOW)) if total_missed > 0 else 100
+
+        # Update history for graphing
+        from time import time
+        history["missed_blocks"].append(state.total_missed)
+        history["timestamps"].append(time())
 
         print(
             f"State updated: active={state.active}, voting_power={state.voting_power}, "
