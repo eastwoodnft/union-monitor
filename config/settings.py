@@ -1,11 +1,10 @@
 import os
-import dotenv
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Configuration
+#Configuration
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 VALIDATOR_CONSENSUS_ADDRESS = os.getenv("VALIDATOR_CONSENSUS_ADDRESS")
