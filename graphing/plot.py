@@ -1,5 +1,4 @@
 import matplotlib.pyplot as plt
-import os
 from datetime import datetime
 from config.settings import SLASHING_WINDOW
 
@@ -7,7 +6,7 @@ def plot_missed_blocks(history, output_path="missed_blocks.png"):
     """
     Generate a plot of missed blocks within the slashing window over time.
     Args:
-        history: Dict with 'missed_blocks' and 'timestamps' deques.
+        history: Dict with 'missed_blocks' and 'timestamps' lists or deques.
         output_path: Where to save the plot (default: 'missed_blocks.png').
     Returns:
         Path to the saved plot.
@@ -19,18 +18,26 @@ def plot_missed_blocks(history, output_path="missed_blocks.png"):
         print("No data available to plot.")
         return None
 
-    plt.figure(figsize=(10, 6))
-    plt.plot(timestamps, missed_blocks, label="Missed Blocks", color="red", marker="o")
-    plt.axhline(y=SLASHING_WINDOW * 0.20, color="orange", linestyle="--", label="20% Slashing Threshold")
-    plt.title("Missed Blocks Over Time (Slashing Window)")
-    plt.xlabel("Time")
-    plt.ylabel(f"Missed Blocks (Window: {SLASHING_WINDOW})")
-    plt.legend()
-    plt.grid(True)
-    plt.xticks(rotation=45)
-    plt.tight_layout()
+    # Set dark theme
+    plt.style.use("dark_background")
+    plt.figure(figsize=(10, 6), facecolor="black")
+    ax = plt.gca()
+    ax.set_facecolor("black")
 
-    # Save the plot
-    plt.savefig(output_path)
+    # Plot missed blocks with orange line
+    plt.plot(timestamps, missed_blocks, label="Missed Blocks", color="orange", marker="o", linewidth=2)
+    plt.axhline(y=SLASHING_WINDOW * 0.20, color="white", linestyle="--", label="20% Slashing Threshold")
+
+    # Customize text and grid
+    plt.title("Missed Blocks Over Time (Slashing Window)", color="white")
+    plt.xlabel("Time", color="white")
+    plt.ylabel(f"Missed Blocks (Window: {SLASHING_WINDOW})", color="white")
+    plt.legend(facecolor="black", edgecolor="white", labelcolor="white")
+    plt.grid(True, color="gray", linestyle="--", alpha=0.3)
+    plt.xticks(rotation=45, color="white")
+    plt.yticks(color="white")
+
+    plt.tight_layout()
+    plt.savefig(output_path, facecolor="black")
     plt.close()
     return output_path
