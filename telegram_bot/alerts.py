@@ -24,8 +24,7 @@ async def status_command(update, context, state):
         f"Delegators: {state.delegator_count if state.delegator_count is not None else 'N/A'} UNION\n"
         f"Missed Blocks: {state.total_missed}/{SLASHING_WINDOW} ({missed_percentage:.1f}%)\n"
         f"Uptime: {state.uptime:.1f}%\n"
-        f"Sync Status: {'Synced' if not state.syncing else 'Catching Up'}\n"
-        f"Node Peers: {state.peer_count} (RPC node connectivity)"
+        f"Sync Status: {'Synced' if not state.syncing else 'Catching Up'}"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -40,8 +39,7 @@ async def missed_command(update, context, state):
 async def network_command(update, context, state):
     msg = (
         f"*Network Stats*\n"
-        f"Avg Block Time: {state.avg_block_time:.2f}s\n"
-        f"Node Peers: {state.peer_count} (RPC node connectivity)"
+        f"Avg Block Time: {state.avg_block_time:.2f}s"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
