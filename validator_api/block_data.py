@@ -1,21 +1,16 @@
-import aiohttp  # Add this
-import time
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+import aiohttp  # Already present
 from config.settings import UNION_RPC, UNION_REST_API, VALIDATOR_CONSENSUS_ADDRESS, SLASHING_WINDOW
 
 async def get_latest_height():
-    session = requests.Session()
-    retry_strategy = Retry(total=3, backoff_factor=1)
-    session.mount("http://", HTTPAdapter(max_retries=retry_strategy))
-    try:
-        response = session.get(f"{UNION_RPC}/block", timeout=10)
-        response.raise_for_status()
-        height = int(response.json()["result"]["block"]["header"]["height"])
-        return height
-    except Exception as e:
-        print(f"Error fetching latest height: {e}")
-        return 0
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(f"{UNION_RPC}/block", timeout=10) as response:
+                response.raise_for_status()
+                height = int((await response.json())["result"]["block"]["header"]["height"])
+                return height
+        except Exception as e:
+            print(f"Error fetching latest height: {e}")
+            return 0
 
 async def get_missed_blocks(last_height, missed_blocks_timestamps):
     async with aiohttp.ClientSession() as session:
