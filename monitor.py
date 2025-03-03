@@ -6,6 +6,7 @@ from telegram_bot.alerts import send_telegram_alert, application, status_command
 from telegram.ext import CommandHandler
 from config.settings import SLASHING_WINDOW, SLASHING_THRESHOLD
 from graphing.plot import plot_missed_blocks
+from graphing.storage import load_history, append_history
 
 class MonitorState:
     def __init__(self):
@@ -25,11 +26,8 @@ class MonitorState:
 
 state = MonitorState()
 
-# Historical data for graphing (1 week of 1-minute intervals)
-history = {
-    "missed_blocks": deque(maxlen=30*24*7),  # ~1 week at 1-minute intervals
-    "timestamps": deque(maxlen=30*24*7)
-}
+# Load history from disk
+history = load_history()
 
 async def graph_command(update, context, state, history):
     """Telegram command to send a graph of missed blocks."""
@@ -82,10 +80,9 @@ async def monitor():
         state.avg_block_time = avg_block_time
         state.uptime = 100 * (1 - (total_missed / SLASHING_WINDOW)) if total_missed > 0 else 100
 
-        # Update history for graphing
+        # Update history on disk
         from time import time
-        history["missed_blocks"].append(state.total_missed)
-        history["timestamps"].append(time())
+        append_history(history, time(), state.total_missed)
 
         print(
             f"State updated: active={state.active}, voting_power={state.voting_power}, "
