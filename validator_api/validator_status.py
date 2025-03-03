@@ -17,11 +17,8 @@ async def get_validator_status():
                 total_voting_power = sum(int(v["voting_power"]) for v in validators)
                 my_validator = next((v for v in validators if v["address"] == VALIDATOR_CONSENSUS_ADDRESS), None)
 
-            async with session.get(f"{UNION_RPC}/net_info?", timeout=10) as response:
-                peer_count = len((await response.json())["result"]["peers"]) if response.status == 200 else 0
-
             if not my_validator:
-                return True, None, total_voting_power, None, False, None, None, syncing, peer_count
+                return True, None, total_voting_power, None, False, None, None, syncing
 
             voting_power = int(my_validator["voting_power"])
             rank = sorted(validators, key=lambda x: int(x["voting_power"]), reverse=True).index(my_validator) + 1
@@ -33,7 +30,7 @@ async def get_validator_status():
                     val_data = await response.json()
                     delegator_count = int(val_data["validator"].get("delegator_shares", "0").split('.')[0]) // 10**18
 
-            return True, voting_power, total_voting_power, rank, jailed, delegator_count, None, syncing, peer_count
+            return True, voting_power, total_voting_power, rank, jailed, delegator_count, None, syncing
         except Exception as e:
             print(f"Error fetching validator status: {e}")
-            return False, None, None, None, None, None, None, False, 0
+            return False, None, None, None, None, None, None, False
