@@ -1,10 +1,10 @@
 import asyncio
-import logging
 from collections import deque
-from validator_api.validator_status import get_validator_status
 from validator_api.block_data import get_latest_height, get_missed_blocks
-from telegram_bot.alerts import send_telegram_alert
-from config.settings import *
+from validator_api.validator_status import get_validator_status
+from telegram_bot.alerts import send_telegram_alert, application, status_command, missed_command, network_command, validator_command
+from telegram.ext import CommandHandler
+from config.settings import SLASHING_WINDOW, SLASHING_THRESHOLD
 
 class MonitorState:
     def __init__(self):
@@ -20,6 +20,7 @@ class MonitorState:
         self.jailed = False
         self.delegator_count = None
         self.uptime = None
+        self.slashing_window = SLASHING_WINDOW
 
 state = MonitorState()
 
@@ -31,6 +32,23 @@ async def monitor():
     missed_blocks_timestamps = deque(maxlen=SLASHING_WINDOW)
     failures = 0
     max_failures = 5
+
+    commands = [
+        {"command": "status", "description": "Get validator status"},
+        {"command": "missed", "description": "Check missed blocks"},
+        {"command": "network", "description": "View network stats"},
+        {"command": "validator", "description": "Validator details"}
+    ]
+    await application.bot.set_my_commands([(cmd["command"], cmd["description"]) for cmd in commands])
+
+    application.add_handler(CommandHandler("status", lambda u, c: status_command(u, c, state)))
+    application.add_handler(CommandHandler("missed", lambda u, c: missed_command(u, c, state)))
+    application.add_handler(CommandHandler("network", lambda u, c: network_command(u, c, state)))
+    application.add_handler(CommandHandler("validator", lambda u, c: validator_command(u, c, state)))
+
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
 
     while True:
         active, voting_power, total_voting_power, rank, jailed, delegator_count, _ = await get_validator_status()
@@ -46,7 +64,7 @@ async def monitor():
         state.avg_block_time = avg_block_time
         state.uptime = 100 * (1 - (total_missed / SLASHING_WINDOW)) if total_missed > 0 else 100
 
-        logging.info(
+        print(
             f"State updated: active={state.active}, voting_power={state.voting_power}, "
             f"total_missed={state.total_missed}, avg_block_time={state.avg_block_time}, uptime={state.uptime}"
         )
@@ -74,7 +92,7 @@ async def monitor():
 
         if missed > 0:
             state.missed_since_last_alert += missed
-            logging.info(f"Missed {missed} blocks this check. Total since last alert: {state.missed_since_last_alert}")
+            print(f"Missed {missed} blocks this check. Total since last alert: {state.missed_since_last_alert}")
             if state.missed_since_last_alert > 5:
                 miss_rate = (state.total_missed / SLASHING_WINDOW * 100)
                 await send_telegram_alert(
