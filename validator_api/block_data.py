@@ -1,8 +1,8 @@
-import requests
+import aiohttp  # Add this
 import time
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from config.settings import UNION_RPC, VALIDATOR_CONSENSUS_ADDRESS, SLASHING_WINDOW
+from config.settings import UNION_RPC, UNION_REST_API, VALIDATOR_CONSENSUS_ADDRESS, SLASHING_WINDOW
 
 async def get_latest_height():
     session = requests.Session()
@@ -26,7 +26,7 @@ async def get_missed_blocks(last_height, missed_blocks_timestamps):
                 total_missed = int(signing_info["missed_blocks_counter"])
                 current_height = await get_latest_height()
                 missed = total_missed - sum(1 for ts in missed_blocks_timestamps) if missed_blocks_timestamps else total_missed
-                avg_block_time = 0  # Could estimate from block timestamps if needed
+                avg_block_time = 0  # Could estimate if needed
                 return missed, current_height, total_missed, avg_block_time
         except Exception as e:
             print(f"Error checking missed blocks: {e}")
