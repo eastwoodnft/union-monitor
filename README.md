@@ -27,7 +27,7 @@ Welcome to the first stable release of the Union Monitor Bot! This Telegram bot 
 
 ## Usage
 
-- Add `@YourBotName` on Telegram (replace with your bot’s actual handle).
+- Add `Union-Monitor-Bot` on Telegram.
 - Follow the setup with `/register` and `/config`.
 - Enjoy real-time validator monitoring!
 
