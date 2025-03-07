@@ -10,12 +10,22 @@ async def get_validator_status():
                 latest_height = int(status["result"]["sync_info"]["latest_block_height"])
                 syncing = status["result"]["sync_info"]["catching_up"]
 
-            async with session.get(f"{UNION_RPC}/validators?height={latest_height}&page=1&per_page=100", timeout=10) as response:
-                response.raise_for_status()
-                validators_data = await response.json()
-                validators = validators_data["result"]["validators"]
-                total_voting_power = sum(int(v["voting_power"]) for v in validators)
-                my_validator = next((v for v in validators if v["address"] == VALIDATOR_CONSENSUS_ADDRESS), None)
+            # Fetch all validators with pagination
+            page = 1
+            per_page = 100
+            validators = []
+            while True:
+                async with session.get(f"{UNION_RPC}/validators?height={latest_height}&page={page}&per_page={per_page}", timeout=10) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+                    validators.extend(data["result"]["validators"])
+                    total_validators = int(data["result"]["total"])
+                    if len(validators) >= total_validators or not data["result"]["validators"]:
+                        break
+                    page += 1
+
+            total_voting_power = sum(int(v["voting_power"]) for v in validators)
+            my_validator = next((v for v in validators if v["address"] == VALIDATOR_CONSENSUS_ADDRESS), None)
 
             if not my_validator:
                 return True, None, total_voting_power, None, False, None, None, syncing
