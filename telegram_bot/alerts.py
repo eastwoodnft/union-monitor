@@ -37,10 +37,7 @@ async def missed_command(update, context, state):
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def network_command(update, context, state):
-    msg = (
-        f"*Network Stats*\n"
-        f"Avg Block Time: {state.avg_block_time:.2f}s"
-    )
+    msg = f"*Network Stats*\nAvg Block Time: {state.avg_block_time:.2f}s"
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def validator_command(update, context, state):
@@ -52,3 +49,15 @@ async def validator_command(update, context, state):
         f"Delegators: {state.delegator_count if state.delegator_count is not None else 'N/A'} UNION"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def pause_command(update, context, state):
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text("Usage: /pause <hours> (e.g., /pause 2)")
+        return
+    hours = int(context.args[0])
+    if hours <= 0 or hours > 24:
+        await update.message.reply_text("Please specify a number between 1 and 24 hours.")
+        return
+    from time import time
+    state.paused_until = time() + (hours * 3600)
+    await update.message.reply_text(f"Alerts paused for {hours} hour(s).")
